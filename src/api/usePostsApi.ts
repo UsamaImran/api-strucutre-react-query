@@ -1,32 +1,29 @@
-import { useMutation, useQuery } from 'react-query'
-import { useApi } from './Api'
+import { useMutation, useQuery } from "react-query";
+import { Api } from "./Api";
 
-const POSTS_BASE_API_ENDPOINT = 'https://jsonplaceholder.typicode.com/posts'
+const POSTS_BASE_API_ENDPOINT = "https://jsonplaceholder.typicode.com/posts";
+const myApi = new Api({ baseURL: POSTS_BASE_API_ENDPOINT });
 
 export const usePosts = () => {
-    const Api = useApi()
-
-    return useQuery({
-        queryKey: 'posts',
-        queryFn: () => Api.get<unknown[]>(POSTS_BASE_API_ENDPOINT),
-        enabled: true,
-    })
-}
+  return useQuery({
+    queryKey: "posts",
+    queryFn: () => myApi.get<unknown[]>(POSTS_BASE_API_ENDPOINT),
+    enabled: true,
+  });
+};
 
 export const useGetSinglePost = (id: string) => {
-    const Api = useApi()
-    return useQuery({
-        queryKey: ['posts', 'singlePost', id],
-        queryFn: () => Api.get(`${POSTS_BASE_API_ENDPOINT}/${id}`),
-        enabled: !!id,
-    })
-}
+  return useQuery({
+    queryKey: ["posts", "singlePost", id],
+    queryFn: () => myApi.get(`${POSTS_BASE_API_ENDPOINT}/${id}`),
+    enabled: !!id,
+  });
+};
 
 export const useCreatePost = () => {
-    const Api = useApi()
-    return useMutation({
-        mutationKey: 'create Post',
-        mutationFn: (body: Record<string, unknown>) =>
-            Api.post(POSTS_BASE_API_ENDPOINT, body),
-    })
-}
+  return useMutation({
+    mutationKey: "create Post",
+    mutationFn: (body: Record<string, unknown>) =>
+      myApi.post(POSTS_BASE_API_ENDPOINT, body),
+  });
+};

@@ -1,222 +1,136 @@
-import { createContext, useContext } from 'react';
-import {
-  deepMapToSnakeCase,
-  getPayloadData,
-  getResponseData,
-} from '../utils/apiUtils';
+import axios, {
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  CreateAxiosDefaults,
+} from "axios";
 
-type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type Method = "get" | "post" | "put" | "patch" | "delete";
 
 type RequestBody = Record<string, unknown> | unknown[];
 
-const DEFAULT_ERROR_MESSAGE = 'An unknown error occurred.';
+// interface ApiConfig {
+//   baseURL: string;
+//   timeout?: number;
+//   headers?: Record<string, string>;
+// }
 
-class ApiError extends Error {
-  constructor(message: string, public errors?: any) {
-    super(message);
-  }
-}
+type QueryParams =
+  | string
+  | Record<string, string>
+  | string[][]
+  | URLSearchParams
+  | undefined;
 
-export class ClientError extends ApiError {}
-class UpstreamError extends ApiError {}
-class NotFoundError extends ClientError {}
-export class ConflictError extends ClientError {}
+export class Api {
+  private axiosInstance: AxiosInstance;
 
-export default class Api {
-  public token?: string;
-
-  initialize(authorization?: string) {
-    if (authorization) {
-      this.token = authorization;
-    }
+  constructor(config: CreateAxiosDefaults<any> | undefined) {
+    this.axiosInstance = axios.create(config);
   }
 
-  get authorization() {
-    return this.token ? `Bearer ${this.token}` : null;
-  }
-
-  getUrl(path: string) {
-    //need to add the base path here
-    return `${path}`;
-  }
-
-  getQueryParams(queryParams: Record<string, unknown>) {
-    const params: Record<string, unknown> = {};
-
-    // filter our null/undefined values
-    Object.keys(queryParams).forEach((param) => {
-      if (queryParams[param] != null) {
-        params[param] = queryParams[param];
-      }
-    });
-
-    return new URLSearchParams(deepMapToSnakeCase(params));
-  }
-
-  get<TResult>(
-    path: string,
-    queryParams: Record<string, unknown> = {},
-    whitelistKeys: false | string[] = []
-  ) {
-    const params = this.getQueryParams(queryParams);
-    return this.request<TResult>(
-      'GET',
-      `${path}?${params}`,
-      undefined,
-      whitelistKeys
-    );
-  }
-
-  post<
-    TResult,
-    TBody extends Record<string, unknown> = Record<string, unknown>
-  >(
-    path: string,
-    data?: TBody,
-    queryParams: Record<string, unknown> = {},
-    whitelistKeys: false | string[] = []
-  ) {
-    const params = this.getQueryParams(queryParams);
-    return this.request<TResult, TBody>(
-      'POST',
-      `${path}?${params}`,
-      data,
-      whitelistKeys
-    );
-  }
-
-  put<TResult, TBody extends RequestBody = RequestBody>(
-    path: string,
-    data?: TBody | FormData,
-    queryParams: Record<string, unknown> = {},
-    whitelistKeys: false | string[] = []
-  ) {
-    const params = this.getQueryParams(queryParams);
-    return this.request<TResult, TBody>(
-      'PUT',
-      `${path}?${params}`,
-      data,
-      whitelistKeys
-    );
-  }
-
-  patch<TResult, TBody extends RequestBody = RequestBody>(
-    path: string,
-    data?: TBody | FormData,
-    queryParams: Record<string, unknown> = {},
-    whitelistKeys: false | string[] = []
-  ) {
-    const params = this.getQueryParams(queryParams);
-    return this.request<TResult, TBody>(
-      'PATCH',
-      `${path}?${params}`,
-      data,
-      whitelistKeys
-    );
-  }
-
-  delete(
-    path: string,
-    data?: Record<string, unknown>,
-    queryParams: Record<string, unknown> = {}
-  ) {
-    const params = this.getQueryParams(queryParams);
-    return this.request('DELETE', `${path}?${params}`, data);
-  }
-
-  private async request<TResult, TBody extends RequestBody = RequestBody>(
+  private async request<TResponse, TData extends RequestBody = RequestBody>(
     method: Method,
-    path: string,
-    data?: TBody | FormData,
-    whitelistKeys?: false | string[]
-  ): Promise<TResult | null> {
-    const url = this.getUrl(path);
-
-    const init: RequestInit = {
-      method,
-      credentials: 'same-origin',
-    };
-
-    if (this.authorization) {
-      init.headers = { Authorization: this.authorization };
+    url: string,
+    data?: TData,
+    queryParams?: QueryParams,
+    config?: AxiosRequestConfig
+  ): Promise<TResponse> {
+    if (queryParams) {
+      const queryString = new URLSearchParams(queryParams).toString();
+      url += `?${queryString}`;
     }
 
-    if (data) {
-      if (data instanceof FormData) {
-        init.body = data;
-      } else {
-        init.headers = {
-          'Content-Type': 'application/json',
-          ...init.headers,
-        };
-        init.body =
-          whitelistKeys !== false
-            ? getPayloadData(data, whitelistKeys)
-            : JSON.stringify(data);
+    const response: AxiosResponse<TResponse> = await this.axiosInstance.request(
+      {
+        method,
+        url,
+        data,
+        ...config,
       }
-    }
-
-    const response = await fetch(url, init);
-
-    // FIXME: this is a really ugly hack to get around unauthenticated requests
-    if (response.status === 401) {
-      window.location.pathname = '/auth/logout';
-      return null;
-    }
-
-    if (
-      response.status === 204 ||
-      (response.status === 404 && method === 'GET')
-    ) {
-      return null;
-    }
-
-    if (!response.ok) {
-      throw await Api.resolveError(response);
-    }
-
-    const body = await response.json();
-
-    return (
-      whitelistKeys !== false ? getResponseData(body, whitelistKeys) : body
-    ) as TResult;
+    );
+    return response.data;
   }
 
-  private static async resolveError(response: Response) {
-    let body;
-    let errors;
-
-    try {
-      body = await response.text();
-      errors = JSON.parse(body).errors || [];
-    } catch (e) {
-      errors = [];
+  updateHeaders(config?: Record<string, string>): void {
+    if (config) {
+      this.axiosInstance.defaults.headers = {
+        ...this.axiosInstance.defaults.headers,
+        ...config,
+      };
     }
+  }
 
-    const { status } = response;
+  get<TResponse, TData extends RequestBody = RequestBody>(
+    url: string,
+    queryParams?: QueryParams,
+    config?: AxiosRequestConfig
+  ): Promise<TResponse> {
+    return this.request<TResponse, TData>(
+      "get",
+      url,
+      undefined,
+      queryParams,
+      config
+    );
+  }
 
-    if (status >= 500) {
-      return new UpstreamError(DEFAULT_ERROR_MESSAGE);
-    }
+  post<TResponse, TData extends RequestBody = RequestBody>(
+    url: string,
+    data?: TData,
+    queryParams?: QueryParams,
+    config?: AxiosRequestConfig
+  ): Promise<TResponse> {
+    return this.request<TResponse, TData>(
+      "post",
+      url,
+      data,
+      queryParams,
+      config
+    );
+  }
 
-    if (!Array.isArray(errors)) {
-      return new ClientError(DEFAULT_ERROR_MESSAGE);
-    }
+  put<TResponse, TData extends RequestBody = RequestBody>(
+    url: string,
+    data?: TData,
+    queryParams?: QueryParams,
+    config?: AxiosRequestConfig
+  ): Promise<TResponse> {
+    return this.request<TResponse, TData>(
+      "put",
+      url,
+      data,
+      queryParams,
+      config
+    );
+  }
 
-    const firstMessage = errors?.[0]?.detail || DEFAULT_ERROR_MESSAGE;
+  patch<TResponse, TData extends RequestBody = RequestBody>(
+    url: string,
+    data?: TData,
+    queryParams?: QueryParams,
+    config?: AxiosRequestConfig
+  ): Promise<TResponse> {
+    return this.request<TResponse, TData>(
+      "patch",
+      url,
+      data,
+      queryParams,
+      config
+    );
+  }
 
-    if (status === 404) {
-      return new NotFoundError(firstMessage);
-    }
-
-    if (status === 409) {
-      return new ConflictError(firstMessage);
-    }
-
-    return new ClientError(firstMessage, errors);
+  delete<TResponse, TData extends RequestBody = RequestBody>(
+    url: string,
+    queryParams?: QueryParams,
+    config?: AxiosRequestConfig
+  ): Promise<TResponse> {
+    return this.request<TResponse, TData>(
+      "delete",
+      url,
+      undefined,
+      queryParams,
+      config
+    );
   }
 }
-
-export const ApiContext = createContext<Api>(null as any);
-
-export const useApi = () => useContext(ApiContext);
